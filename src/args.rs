@@ -8,9 +8,12 @@ pub struct Args {
 
 impl Args {
 	//[(short,long,argument_required)]
-	pub fn gather(option_config: &[(char,Option<&str>,bool)]) -> Args {
-		let mut args: Vec<_> = env::args().rev().collect();
-		let _ = args.pop(); //remove argv[0]
+	pub fn gather(args: &[String], option_config: &[(char,Option<&str>,bool)], stop_at_first_other: bool) -> (Args,Vec<String>) {
+		let mut args: Vec<String> = args
+			.into_iter()
+			.rev()
+			.map(String::from)
+			.collect();
 		let mut other_args = vec![];
 		let mut option_args = vec![];
 		loop {
@@ -45,14 +48,26 @@ impl Args {
 				}
 			}else {
 				other_args.push(arg);
+				if other_args.len() >= 1 && stop_at_first_other {
+					return (Args{
+							options: option_args,
+							others: other_args,
+					},args)
+				}
 			}
 		}
 		//add any remaining args to other
-		other_args.append(&mut args);
-		Args{
+		if stop_at_first_other {
+			if let Some(arg) = args.pop() {
+				other_args.push(arg);
+			}
+		}else {
+			other_args.append(&mut args);
+		}
+		(Args{
 			options: option_args,
 			others: other_args,
-		}
+		},args)
 	}
 	pub fn has(&self, short_option: char) -> bool {
 		self.options
