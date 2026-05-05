@@ -8,6 +8,8 @@ use std::env;
 use std::path::PathBuf;
 use std::io;
 use std::fs;
+use std::ffi::*;
+use std::os::fd::AsRawFd;
 
 use password_store::PasswordStore;
 
@@ -17,6 +19,10 @@ struct GlobalConfig {
 }
 
 const VERSION: u8 = 1;
+
+unsafe extern "C" {
+	fn tty_set_echo(fd: c_int, state: c_int) -> c_int;
+}
 
 fn main() -> ExitCode {
 	//====== get arguments and split into global and subcommand ======
@@ -114,9 +120,16 @@ fn new_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 }
 
 fn prompt_for_password(prompt: &str) -> String {
+	let stdin = io::stdin();
+	//echo off
+	unsafe {tty_set_echo(stdin.as_raw_fd(),0)};
+	//show prompt
 	println!("{prompt}");
 	let mut line_buffer = String::new();
-	let _ = io::stdin().read_line(&mut line_buffer);
+	let _ = stdin.read_line(&mut line_buffer);
+	//echo on
+	unsafe {tty_set_echo(stdin.as_raw_fd(),1)};
+	//return the password
 	line_buffer.trim_end_matches('\n').to_string()
 }
 
