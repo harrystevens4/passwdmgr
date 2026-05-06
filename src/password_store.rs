@@ -1,4 +1,4 @@
-use crypto::Crypto;
+use crate::crypto::Crypto;
 use std::io;
 use std::path::{Path,PathBuf};
 use std::fs;
