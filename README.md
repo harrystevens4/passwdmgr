@@ -1,4 +1,12 @@
 
+# TODO
+
+ - crypto.c skcipher does not use cipher name provided
+ - whole crypto.rs interface needs to be better
+ - ncurses rust wrapper
+ - header format needs to be changed to accomodate iv
+ - aes_cbc needs to be changed to ensure padding to blocksize
+
 # Interface
 
 ```
@@ -26,9 +34,11 @@
 |                 |
 +-----------------+
 
+//always uses big endian
+
 struct header {
 	uint32_t magic_number;
-	uint8_t encryption_algorithm;
+	uint16_t encryption_algorithm;
 	uint64_t encrypted_size; //encryption block
 	uint64_t decrypted_size; //encryption block
 	uint64_t password_entry_count;
