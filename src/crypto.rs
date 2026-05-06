@@ -1,4 +1,31 @@
 use std::default::Default;
+use std::ffi::*;
+
+#[repr(C)]
+struct skcipher_info {
+	alg_name: *const c_char,
+
+	message: *const c_char,
+	message_len: c_size_t,
+
+	key: *const c_char,
+	key_len: c_size_t,
+
+	iv: *const c_char,
+	iv_len: c_size_t,
+	
+	output: *mut c_char,
+	output_len: c_size_t,
+}
+
+unsafe extern "C" {
+	fn skcipher(skcipher_info: *mut skcipher_info, encrypt: c_int) -> c_int;
+}
+
+pub enum EncryptionMode {
+	Encrypt,
+	Decrypt,
+}
 
 pub enum Crypto {
 	AESPassword(String),
@@ -15,4 +42,28 @@ impl Crypto {
 			_ => None,
 		}
 	}
+}
+
+fn aes_cbc(input: &[u8], key: &[u8], iv: &[u8], mode: EncryptionMode) -> Vec<u8> {
+	//====== allocate output buffer ======
+	let mut output: Vec<u8> = vec![0; input.len()];
+	//====== prepare cipher info ======
+	let encrypt_mode: c_int = match mode {
+		EncryptionMode::Encrypt => 1,
+		EncryptionMode::Decrypt => 0,
+	};
+	let alg_name = c"cbc(aes)";
+	let mut cipher_info = skcipher_info {
+		alg_name: alg_name.as_ptr(),
+		message: input.as_ptr() as *const i8,
+		message_len: input.len(),
+		key: key.as_ptr() as *const i8,
+		key_len: key.len(),
+		iv: iv.as_ptr() as *const i8,
+		iv_len: iv.len(),
+		output: output.as_mut_ptr() as *mut i8,
+		output_len: output.len(),
+	};
+	unsafe { skcipher(&mut cipher_info,encrypt_mode) };
+	output
 }

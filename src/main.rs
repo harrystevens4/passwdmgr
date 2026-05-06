@@ -1,3 +1,5 @@
+#![feature(c_size_t)]
+
 mod password_store;
 mod args;
 mod crypto;
