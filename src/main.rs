@@ -112,12 +112,18 @@ fn new_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	let password_store = PasswordStore::new(&global_config.password_store_path,&password);
 	//====== create directories if requested ======
 	if args.has('m') {
-		if let Err(e) = fs::create_dir_all(&global_config.password_store_path) {
-			eprintln!("Error creating parent directories for password store: {e}");
-			return ExitCode::FAILURE;
+		if let Some(parent_dirs) = global_config.password_store_path.parent() {
+			if let Err(e) = fs::create_dir_all(parent_dirs) {
+				eprintln!("Error creating parent directories for password store: {e}");
+				return ExitCode::FAILURE;
+			}
 		}
 	}
 	//====== save empty password store ======
+	if let Err(e) = password_store.save() {
+		eprintln!("Error saving password store: {e}");
+		return ExitCode::FAILURE;
+	}
 	ExitCode::SUCCESS
 }
 
