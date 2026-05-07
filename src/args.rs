@@ -1,5 +1,3 @@
-use std::env;
-
 #[derive(Debug)]
 pub struct Args {
 	options: Vec<(char,Option<String>)>, //(short_opt,Option<argument>)
