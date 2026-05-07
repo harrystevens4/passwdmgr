@@ -64,6 +64,7 @@ fn main() -> ExitCode {
 	match global_args.others()[0].as_str() {
 		"open" => open_subcommand(&global_config,&subcommand_args),
 		"new" => new_subcommand(&global_config,&subcommand_args),
+		"test" => test_subcommand(),
 		subcommand => {
 			eprintln!("Bad subcommand \"{}\", use --help for help",subcommand);
 			ExitCode::FAILURE
@@ -100,7 +101,7 @@ fn new_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 		('f',Some("force"),false),
 	],false);
 	//====== check if a file already exists ======
-	if (&global_config.password_store_path).exists() {
+	if (&global_config.password_store_path).exists() && !args.has('f') {
 		eprintln!("password store already exists, use --force to ignore");
 		return ExitCode::FAILURE;
 	}
@@ -139,6 +140,25 @@ fn prompt_for_password(prompt: &str) -> String {
 	unsafe {tty_set_echo(stdin.as_raw_fd(),1)};
 	//return the password
 	line_buffer.trim_end_matches('\n').to_string()
+}
+
+fn test_subcommand() -> ExitCode {
+	use crate::crypto::*;
+	println!("sha256 test:");
+	assert_eq!(
+		vec![0x81_u8,0x71,0xea,0x07,0x8b,0x3f,0xd0,0x25,0x56,0x9b,0x77,0xc2,0x77,0x72,0x8c,0xfb,0x4d,0xe8,0x7b,0xd4,0x40,0x0b,0xe8,0x43,0x62,0xab,0x65,0x8c,0x0e,0x1e,0x67,0xac,],
+		sha256_digest(&"kjhfads34987bjn234".bytes().collect::<Vec<u8>>()).unwrap()
+	);
+	println!("passed");
+	println!("aes test:");
+	let iv = get_random_bytes(16).unwrap();
+	let key = get_random_bytes(32).unwrap();
+	let data = get_random_bytes(32).unwrap().repeat(100);
+	let encrypted_data = aes_cbc(&data,&key,&iv,EncryptionMode::Encrypt).unwrap();
+	let decrypted_data = aes_cbc(&encrypted_data,&key,&iv,EncryptionMode::Decrypt).unwrap();
+	assert_eq!(data,decrypted_data);
+	println!("passed");
+	ExitCode::SUCCESS
 }
 
 fn print_help(){
