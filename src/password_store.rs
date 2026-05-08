@@ -8,6 +8,7 @@ use super::VERSION;
 
 pub struct PasswordStore {
 	passwords: Vec<PasswordStoreEntry>,
+	encryption_password: String,
 	path: PathBuf,
 }
 
@@ -53,9 +54,20 @@ impl PasswordStore {
 		encrypted_data.extend(vec![0].repeat(required_padding));
 		//decrypt
 		let decrypted_data = aes_cbc(&encrypted_data,&aes_key,&iv,EncryptionMode::Decrypt)?;
+		//====== verify decryption ======
+		let mut iv_password = iv.to_vec();
+		iv_password.extend(password.bytes());
+		let iv_password_hash = sha256_digest(&iv_password)?;
+		if decrypted_data.len() < 32 {
+			Err(io::Error::other("verification hash too small"))?
+		}
+		if iv_password_hash.as_slice() != &decrypted_data[..32] {
+			Err(io::Error::other("decryption failed"))?
+		}
 		//====== construct password store struct ======
 		let password_store = PasswordStore {
 			passwords: vec![],
+			encryption_password: password.to_string(),
 			path: path.as_ref().to_path_buf(),
 		};
 		Ok(password_store)
@@ -63,15 +75,17 @@ impl PasswordStore {
 	pub fn new<T: AsRef<Path>>(path: T, password: &str) -> Self {
 		PasswordStore {
 			passwords: vec![],
+			encryption_password: password.to_string(),
 			path: path.as_ref().to_path_buf(),
 		}
 	}
 	pub fn save(&self) -> io::Result<()> {
 		let mut output_file: Vec<u8> = vec![];
+		let mut data_to_encrypt = vec![];
 		//generate iv and salt
 		let iv = get_random_bytes(16)?;
 		let salt = get_random_bytes(16)?;
-		//header
+		//====== header ======
 		let target_magic_number_bytes = [VERSION,b'p',b'w',b's'];
 		output_file.extend(&target_magic_number_bytes);
 		let password_entry_count = u64::to_be_bytes(self.passwords.len() as u64);
@@ -79,6 +93,26 @@ impl PasswordStore {
 		output_file.extend(&iv);
 		output_file.extend(&salt);
 		output_file.extend(vec![0; 20]);
+		//====== verification hash ======
+		let mut iv_password = iv.to_vec();
+		iv_password.extend(self.encryption_password.bytes());
+		let iv_password_hash = sha256_digest(&iv_password)?;
+		data_to_encrypt.extend(&iv_password_hash);
+		//====== encrypt data ======
+		//generate the key
+		let mut salted_password = vec![];
+		salted_password.extend(salt);
+		salted_password.extend(self.encryption_password.bytes());
+		let aes_key = sha256_digest(&salted_password)?;
+		//pad data to aes block size
+		let required_padding = 
+			if data_to_encrypt.len() % 16 == 0 {0}
+			else {16 - (data_to_encrypt.len() % 16)};
+		data_to_encrypt.extend(vec![0].repeat(required_padding));
+		//encrypt
+		let encrypted_data = aes_cbc(&data_to_encrypt,&aes_key,&iv,EncryptionMode::Encrypt)?;
+		output_file.extend(&encrypted_data);
+		//====== write to file ======
 		fs::write(&self.path,&output_file)?;
 		Ok(())
 	}

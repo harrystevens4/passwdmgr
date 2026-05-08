@@ -100,7 +100,7 @@ int skcipher(struct skcipher_info *skcipher_info, int encrypt){
 	cmsg_item->cmsg_type = ALG_SET_IV;
 	struct af_alg_iv *iv = (void *)CMSG_DATA(cmsg_item);
 	iv->ivlen = iv_len;
-	memcpy(&iv->iv,&skcipher_info->iv,iv_len);
+	memcpy(&iv->iv,skcipher_info->iv,iv_len);
 	//====== sendmsg the data ======
 	result = sendmsg(crypto_socket,&message,0);
 	if (result < 0) return -1;
