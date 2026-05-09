@@ -8,12 +8,14 @@ use super::VERSION;
 use std::time::{SystemTime,UNIX_EPOCH,Duration};
 use std::default::Default;
 
+#[derive(Clone)]
 pub struct PasswordStore {
 	passwords: Vec<PasswordStoreEntry>,
 	encryption_password: String,
 	path: PathBuf,
 }
 
+#[derive(Clone)]
 pub struct PasswordStoreEntry {
 	time_added: SystemTime,
 	identifier: String,
@@ -31,6 +33,15 @@ impl Default for PasswordStoreEntry {
 			password: String::new(),
 			notes: String::new(),
 		}
+	}
+}
+
+impl IntoIterator for PasswordStore {
+	type Item = PasswordStoreEntry;
+	type IntoIter = std::vec::IntoIter<PasswordStoreEntry>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.passwords.into_iter()
 	}
 }
 
@@ -225,6 +236,17 @@ impl PasswordStore {
 		fs::write(&self.path,&output_file)?;
 		Ok(())
 	}
+	pub fn entries(&self) -> Vec<PasswordStoreEntry> {
+		self.passwords.clone()
+	}
+}
+
+impl PasswordStoreEntry {
+	pub fn time_added(&self) -> SystemTime {self.time_added.clone()}
+	pub fn identifier(&self) -> String {self.identifier.clone()}
+	pub fn username(&self) -> String {self.username.clone()}
+	pub fn password(&self) -> String {self.password.clone()}
+	pub fn notes(&self) -> String {self.notes.clone()}
 }
 
 fn slice_take<T: Into<usize> + Copy,U>(slice: &[U], n: T) -> &[U] {
