@@ -30,6 +30,7 @@ pub enum EncryptionMode {
 }
 
 pub fn aes_cbc(input: &[u8], key: &[u8], iv: &[u8], mode: EncryptionMode) -> io::Result<Vec<u8>> {
+	if input.len() % 16 != 0 {Err(io::Error::other("input not a multiple of aes block size"))?}
 	//====== allocate output buffer ======
 	let mut output: Vec<u8> = vec![0; input.len()];
 	//====== prepare cipher info ======
