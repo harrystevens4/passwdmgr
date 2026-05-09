@@ -3,6 +3,7 @@
 mod password_store;
 mod args;
 mod crypto;
+mod ncurses;
 
 use std::process::ExitCode;
 use args::Args;
@@ -12,8 +13,10 @@ use std::io;
 use std::fs;
 use std::ffi::*;
 use std::os::fd::AsRawFd;
+use std::time::Duration;
 
 use password_store::{PasswordStore,PasswordStoreEntry};
+use ncurses::Ncurses;
 
 struct GlobalConfig {
 	password: Option<String>,
@@ -93,6 +96,28 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	};
 	//test mode simply opens then closes it
 	if args.has('t') {return ExitCode::SUCCESS}
+	//====== ncurses window ======
+	let mut ncurses = Ncurses::init();
+	let stdscr = ncurses.stdscr();
+	let (term_height,term_width) = stdscr.getmaxyx();
+	//calculate window sizes and positions
+	let selection_window_width = term_width/3;
+	let selection_window_height = term_height;
+	let selection_window_x = 0;
+	let selection_window_y = 0;
+
+	let control_window_height = term_height/3;
+	let control_window_width = term_width-selection_window_width;
+	let control_window_x = selection_window_width;
+	let control_window_y = 0;
+	//create windows
+	let selection_window = ncurses.newwin(selection_window_height,selection_window_height,selection_window_y,selection_window_x);
+	let control_window = ncurses.newwin(control_window_height,control_window_width,control_window_y,control_window_x);
+	selection_window.r#box(0,0);
+	selection_window.refresh();
+	control_window.r#box(0,0);
+	control_window.refresh();
+	std::thread::sleep(Duration::from_secs(2));
 	ExitCode::SUCCESS
 }
 
