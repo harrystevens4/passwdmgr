@@ -13,7 +13,7 @@ use std::fs;
 use std::ffi::*;
 use std::os::fd::AsRawFd;
 
-use password_store::PasswordStore;
+use password_store::{PasswordStore,PasswordStoreEntry};
 
 struct GlobalConfig {
 	password: Option<String>,
@@ -65,6 +65,7 @@ fn main() -> ExitCode {
 		"open" => open_subcommand(&global_config,&subcommand_args),
 		"new" => new_subcommand(&global_config,&subcommand_args),
 		"test" => test_subcommand(),
+		"print" => print_subcommand(&global_config,&subcommand_args),
 		subcommand => {
 			eprintln!("Bad subcommand \"{}\", use --help for help",subcommand);
 			ExitCode::FAILURE
@@ -128,6 +129,45 @@ fn new_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	ExitCode::SUCCESS
 }
 
+fn print_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
+	//====== process arguments ======
+	let (args,_) = Args::gather(args,&[
+		('t',Some("sort-by-time"),false),
+		('i',Some("sort-by-identifier"),false),
+		('n',Some("sort-by-username"),false),
+		('r',Some("reverse"),false),
+	],false);
+	//====== open store ======
+	let password_prompt = format!("Enter password for {}:",global_config.password_store_path.to_string_lossy());
+	let password = global_config.password
+		.clone()
+		.unwrap_or_else(|| prompt_for_password(&password_prompt));
+	println!("opening password store...");
+	let password_store = match PasswordStore::open(&global_config.password_store_path,&password) {
+		Ok(p) => p, Err(e) => {
+			eprintln!("Error opening password store at \"{}\": {}",global_config.password_store_path.to_string_lossy(),e);
+			return ExitCode::FAILURE;
+		}
+	};
+	//====== sort ======
+	let mut stored_passwords = password_store.entries();
+	if args.has('n') {stored_passwords.sort_by_key(|p: &PasswordStoreEntry| p.username())}
+	else if args.has('i') {stored_passwords.sort_by_key(|p: &PasswordStoreEntry| p.identifier())}
+	else {stored_passwords.sort_by_key(|p: &PasswordStoreEntry| p.time_added())}
+	//reverse if descending required
+	if args.has('r') {stored_passwords.reverse()}
+	//====== print ======
+	for entry in &stored_passwords {
+		println!("[{}]",entry.identifier());
+		println!("username: \"{}\"",entry.username());
+		println!("password: \"{}\"",entry.password());
+		println!("notes: \"{}\"",entry.notes());
+		println!("");
+	}
+	if stored_passwords.len() == 0 {println!("No passwords stored.")}
+	ExitCode::SUCCESS
+}
+
 fn prompt_for_password(prompt: &str) -> String {
 	let stdin = io::stdin();
 	//echo off
@@ -169,6 +209,11 @@ fn print_help(){
 	println!("	new : Creates a password store at the path provided, or at the default location");
 	println!("		-f,--force : Create a new one even if one already exists");
 	println!("		-m,--mkdir : Create parent directories if they dont exist");
+	println!("	print : Print all passwords in a store");
+	println!("		-t,--sort-by-time       : Sort by time added (ascending)");
+	println!("		-i,--sort-by-identifier : Sort by identifier (ascending)");
+	println!("		-n,--sort-by-username   : Sort by username (ascending)");
+	println!("		-r,--reverse            : Reverse order (sort by descending)");
 	println!("global options:");
 	println!("	-p,--password : Provide password for encryption/decryption");
 	println!("	-f,--password-store : Provide path of password store file");
