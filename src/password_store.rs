@@ -5,6 +5,8 @@ use std::fs;
 use std::error::Error;
 use std::convert::TryInto;
 use super::VERSION;
+use std::time::{SystemTime,UNIX_EPOCH,Duration};
+use std::default::Default;
 
 pub struct PasswordStore {
 	passwords: Vec<PasswordStoreEntry>,
@@ -13,6 +15,23 @@ pub struct PasswordStore {
 }
 
 pub struct PasswordStoreEntry {
+	time_added: SystemTime,
+	identifier: String,
+	username: String,
+	password: String,
+	notes: String,
+}
+
+impl Default for PasswordStoreEntry {
+	fn default() -> Self {
+		PasswordStoreEntry {
+			time_added: SystemTime::now(),
+			identifier: String::new(),
+			username: String::new(),
+			password: String::new(),
+			notes: String::new(),
+		}
+	}
 }
 
 impl PasswordStore {
@@ -58,15 +77,54 @@ impl PasswordStore {
 		let mut iv_password = iv.to_vec();
 		iv_password.extend(password.bytes());
 		let iv_password_hash = sha256_digest(&iv_password)?;
+		iv_password_hash.len();
 		if decrypted_data.len() < 32 {
 			Err(io::Error::other("verification hash too small"))?
 		}
 		if iv_password_hash.as_slice() != &decrypted_data[..32] {
 			Err(io::Error::other("decryption failed"))?
 		}
+		//====== read password entries ======
+		let mut password_entries = vec![];
+		let password_entry_data = &decrypted_data[32..];
+		let mut i = 0;
+		loop {
+			if password_entries.len() == password_entry_count as usize {break}
+			//====== read header ======
+			if password_entry_data.len()-i < 16 {break}
+			let identifier_len = u16::from_be_bytes(password_entry_data[i..(i+2)].try_into()?) as usize;
+			let username_len = u16::from_be_bytes(password_entry_data[(i+2)..(i+4)].try_into()?) as usize;
+			let password_len = u16::from_be_bytes(password_entry_data[(i+4)..(i+6)].try_into()?) as usize;
+			let notes_len = u16::from_be_bytes(password_entry_data[(i+6)..(i+8)].try_into()?) as usize;
+			let timestamp = u64::from_be_bytes(password_entry_data[(i+8)..(i+16)].try_into()?);
+			i += 16;
+			//====== read the data ======
+			let data_len = identifier_len + username_len + notes_len;
+			if password_entry_data.len()-i < data_len {break}
+			//identifier
+			let identifier = String::from_utf8_lossy(&password_entry_data[(i)..(i+identifier_len)]).into_owned();
+			i += identifier_len;
+			//username
+			let username = String::from_utf8_lossy(&password_entry_data[(i)..(i+username_len)]).into_owned();
+			i += username_len;
+			//password
+			let password = String::from_utf8_lossy(&password_entry_data[(i)..(i+password_len)]).into_owned();
+			i += password_len;
+			//notes
+			let notes = String::from_utf8_lossy(&password_entry_data[(i)..(i+notes_len)]).into_owned();
+			i += notes_len;
+			//====== construct passowrd entry struct ======
+			password_entries.push(PasswordStoreEntry {
+				identifier,
+				username,
+				password,
+				notes,
+				time_added: UNIX_EPOCH + Duration::from_secs(timestamp),
+			});
+		}
 		//====== construct password store struct ======
 		let password_store = PasswordStore {
-			passwords: vec![],
+			passwords: password_entries,
 			encryption_password: password.to_string(),
 			path: path.as_ref().to_path_buf(),
 		};
@@ -96,8 +154,59 @@ impl PasswordStore {
 		//====== verification hash ======
 		let mut iv_password = iv.to_vec();
 		iv_password.extend(self.encryption_password.bytes());
-		let iv_password_hash = sha256_digest(&iv_password)?;
+		let iv_password_hash = dbg!{sha256_digest(&iv_password)?};
 		data_to_encrypt.extend(&iv_password_hash);
+		//====== password entries ======
+		//struct password_entry {
+		//	uint16_t identifier_len;
+		//	uint16_t username_len;
+		//	uint16_t password_len;
+		//	uint16_t notes_len;
+		//	uint64_t time_added;
+		//	char identifier[];
+		//	char username[];
+		//	char password[];
+		//	char notes[];
+		//}
+		for password_entry in &self.passwords {
+			//====== prepare all the struct fields ======
+			let mut password_entry_buffer = vec![];
+			let identifier_len: u16 = password_entry.identifier
+				.len()
+				.try_into()
+				.unwrap_or(u16::MAX);
+			let username_len: u16 = password_entry.username
+				.len()
+				.try_into()
+				.unwrap_or(u16::MAX);
+			let password_len: u16 = password_entry.password
+				.len()
+				.try_into()
+				.unwrap_or(u16::MAX);
+			let notes_len: u16 = password_entry.notes
+				.len()
+				.try_into()
+				.unwrap_or(u16::MAX);
+			let identifier = slice_take(password_entry.identifier.as_bytes(),identifier_len);
+			let username = slice_take(password_entry.username.as_bytes(),username_len);
+			let password = slice_take(password_entry.password.as_bytes(),password_len);
+			let notes = slice_take(password_entry.notes.as_bytes(),notes_len);
+			let timestamp: u64 = password_entry.time_added
+				.duration_since(UNIX_EPOCH)
+				.unwrap_or(Duration::new(0,0))
+				.as_secs();
+			//====== append all the data ======
+			password_entry_buffer.extend(identifier_len.to_be_bytes());
+			password_entry_buffer.extend(username_len.to_be_bytes());
+			password_entry_buffer.extend(password_len.to_be_bytes());
+			password_entry_buffer.extend(notes_len.to_be_bytes());
+			password_entry_buffer.extend(timestamp.to_be_bytes());
+			password_entry_buffer.extend(identifier);
+			password_entry_buffer.extend(username);
+			password_entry_buffer.extend(password);
+			password_entry_buffer.extend(notes);
+			data_to_encrypt.extend(&password_entry_buffer);
+		}
 		//====== encrypt data ======
 		//generate the key
 		let mut salted_password = vec![];
@@ -115,5 +224,13 @@ impl PasswordStore {
 		//====== write to file ======
 		fs::write(&self.path,&output_file)?;
 		Ok(())
+	}
+}
+
+fn slice_take<T: Into<usize> + Copy,U>(slice: &[U], n: T) -> &[U] {
+	if slice.len() > n.into() {
+		&slice[..(n.into())]
+	}else {
+		slice
 	}
 }
