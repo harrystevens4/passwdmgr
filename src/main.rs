@@ -66,6 +66,7 @@ fn main() -> ExitCode {
 		"new" => new_subcommand(&global_config,&subcommand_args),
 		"test" => test_subcommand(),
 		"print" => print_subcommand(&global_config,&subcommand_args),
+		"add" => add_subcommand(&global_config,&subcommand_args),
 		subcommand => {
 			eprintln!("Bad subcommand \"{}\", use --help for help",subcommand);
 			ExitCode::FAILURE
@@ -168,6 +169,51 @@ fn print_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	ExitCode::SUCCESS
 }
 
+fn add_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
+	//====== process arguments ======
+	let (args,_) = Args::gather(args,&[
+		('i',Some("identifier"),true),
+		('u',Some("username"),true),
+		('p',Some("password"),true),
+		('n',Some("notes"),true),
+	],false);
+	//====== open store ======
+	let password_prompt = format!("Enter password for {}:",global_config.password_store_path.to_string_lossy());
+	let password = global_config.password
+		.clone()
+		.unwrap_or_else(|| prompt_for_password(&password_prompt));
+	println!("opening password store...");
+	let mut password_store = match PasswordStore::open(&global_config.password_store_path,&password) {
+		Ok(p) => p, Err(e) => {
+			eprintln!("Error opening password store at \"{}\": {}",global_config.password_store_path.to_string_lossy(),e);
+			return ExitCode::FAILURE;
+		}
+	};
+	//====== prompt for info ======
+	let get_field = |field: &str|{
+		println!("enter {}:",field);
+		let stdin = io::stdin();
+		let mut buffer = String::new();
+		let _ = stdin.read_line(&mut buffer);
+		buffer
+			.trim_end_matches('\n')
+			.to_string()
+	};
+	let identifier = args.get_value('i').unwrap_or_else(|| get_field("identifier"));
+	let username = args.get_value('u').unwrap_or_else(|| get_field("username"));
+	let password = args.get_value('p').unwrap_or_else(|| get_field("password"));
+	let notes = args.get_value('p').unwrap_or_else(|| get_field("notes"));
+	//====== add to password store ======
+	let entry = PasswordStoreEntry::new(&identifier,&username,&password,&notes);
+	password_store.add_entry(entry);
+	//====== save ======
+	if let Err(e) = password_store.save() {
+		eprintln!("Error saving password store: {e}");
+		return ExitCode::FAILURE;
+	}
+	ExitCode::SUCCESS
+}
+
 fn prompt_for_password(prompt: &str) -> String {
 	let stdin = io::stdin();
 	//echo off
@@ -204,17 +250,20 @@ fn test_subcommand() -> ExitCode {
 fn print_help(){
 	println!("usage: passwdmgr [global options] <command> [command options]");
 	println!("commands:");
-	println!("	open : Opens the password store at the path provided, or the default one");
-	println!("		-t,--test : Open then immediately close without doing anything.");
-	println!("	new : Creates a password store at the path provided, or at the default location");
-	println!("		-f,--force : Create a new one even if one already exists");
-	println!("		-m,--mkdir : Create parent directories if they dont exist");
-	println!("	print : Print all passwords in a store");
-	println!("		-t,--sort-by-time       : Sort by time added (ascending)");
-	println!("		-i,--sort-by-identifier : Sort by identifier (ascending)");
-	println!("		-n,--sort-by-username   : Sort by username (ascending)");
-	println!("		-r,--reverse            : Reverse order (sort by descending)");
+	println!("    open : Opens the password store at the path provided, or the default one");
+	println!("        -t,--test : Open then immediately close without doing anything.");
+	println!("");
+	println!("    new : Creates a password store at the path provided, or at the default location");
+	println!("        -f,--force : Create a new one even if one already exists");
+	println!("        -m,--mkdir : Create parent directories if they dont exist");
+	println!("");
+	println!("    print : Print all passwords in a store");
+	println!("        -t,--sort-by-time       : Sort by time added (ascending)");
+	println!("        -i,--sort-by-identifier : Sort by identifier (ascending)");
+	println!("        -n,--sort-by-username   : Sort by username (ascending)");
+	println!("        -r,--reverse            : Reverse order (sort by descending)");
+	println!("");
 	println!("global options:");
-	println!("	-p,--password : Provide password for encryption/decryption");
-	println!("	-f,--password-store : Provide path of password store file");
+	println!("    -p,--password : Provide password for encryption/decryption");
+	println!("    -f,--password-store : Provide path of password store file");
 }

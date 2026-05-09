@@ -165,7 +165,7 @@ impl PasswordStore {
 		//====== verification hash ======
 		let mut iv_password = iv.to_vec();
 		iv_password.extend(self.encryption_password.bytes());
-		let iv_password_hash = dbg!{sha256_digest(&iv_password)?};
+		let iv_password_hash = sha256_digest(&iv_password)?;
 		data_to_encrypt.extend(&iv_password_hash);
 		//====== password entries ======
 		//struct password_entry {
@@ -239,6 +239,9 @@ impl PasswordStore {
 	pub fn entries(&self) -> Vec<PasswordStoreEntry> {
 		self.passwords.clone()
 	}
+	pub fn add_entry(&mut self, entry: PasswordStoreEntry){
+		self.passwords.push(entry);
+	}
 }
 
 impl PasswordStoreEntry {
@@ -247,6 +250,15 @@ impl PasswordStoreEntry {
 	pub fn username(&self) -> String {self.username.clone()}
 	pub fn password(&self) -> String {self.password.clone()}
 	pub fn notes(&self) -> String {self.notes.clone()}
+
+	pub fn new(identifier: &str, username: &str, password: &str, notes: &str) -> Self {
+		let mut entry = PasswordStoreEntry::default();
+		entry.identifier = identifier.to_string();
+		entry.username = username.to_string();
+		entry.password = password.to_string();
+		entry.notes = notes.to_string();
+		entry
+	}
 }
 
 fn slice_take<T: Into<usize> + Copy,U>(slice: &[U], n: T) -> &[U] {
