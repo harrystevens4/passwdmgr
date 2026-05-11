@@ -1,4 +1,5 @@
 use std::ffi::*;
+use crate::constants::*;
 
 pub type chtype = c_uint;
 pub type WindowPtr = *mut c_void;
@@ -15,6 +16,7 @@ unsafe extern "C" {
 	fn mvwaddnwstr(win: WindowPtr, y: c_int, x: c_int, wstr: *const c_void, n: c_int) -> c_int;
 	fn mbstowcs(dest: *mut c_void, src: *const c_char, dsize: c_size_t) -> c_size_t;
 	fn getch() -> c_int;
+	fn keypad(win: WindowPtr, bf: c_int) -> c_int;
 }
 
 pub struct Ncurses {
@@ -25,6 +27,18 @@ pub struct Ncurses {
 pub struct Window<'a> {
 	ptr: WindowPtr,
 	__ncurses: &'a Ncurses, //leverage the borrow checker to ensure all windows are destroyed before ncurses is deinitialised at compile time!
+}
+
+pub enum Input {
+	AsciiChar(char),
+	Up,
+	Down,
+	Left,
+	Right,
+	Space,
+	Enter,
+	Backspace,
+	Unknown,
 }
 
 impl Ncurses {
@@ -47,6 +61,23 @@ impl Ncurses {
 		Window {
 			ptr: window,
 			__ncurses: &self
+		}
+	}
+	pub fn getch(&self) -> Input {
+		use Input::*;
+		let ch = unsafe {getch()};
+		match ch {
+			KEY_UP => Up,
+			KEY_DOWN => Down,
+			KEY_LEFT => Left,
+			KEY_RIGHT => Right,
+			KEY_BACKSPACE => Backspace,
+			10 => Enter,
+			code => {
+				char::from_u32(code as u32)
+					.map(|ch| AsciiChar(ch))
+					.unwrap_or(Unknown)
+			}
 		}
 	}
 }
@@ -88,6 +119,7 @@ impl Window<'_> {
 			string.chars().count() as c_int
 		)};
 	}
+	pub fn keypad(&self, bf: bool) {unsafe {keypad(self.as_ptr(),bf as c_int)};}
 }
 
 impl Drop for Window<'_> {
@@ -95,3 +127,4 @@ impl Drop for Window<'_> {
 		unsafe {delwin(self.as_ptr())};
 	}
 }
+

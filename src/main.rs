@@ -4,6 +4,7 @@ mod password_store;
 mod args;
 mod crypto;
 mod ncurses;
+mod constants;
 
 use std::process::ExitCode;
 use args::Args;
@@ -100,6 +101,7 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	let ncurses = Ncurses::init();
 	let stdscr = ncurses.stdscr();
 	let (term_height,term_width) = stdscr.getmaxyx();
+	stdscr.keypad(true);
 	//calculate window sizes and positions
 	let selection_window_width = term_width/3;
 	let selection_window_height = term_height;
@@ -129,13 +131,13 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	//====== update loop ======
 	stdscr.mvaddstr(1,1,format!("{}x{}",term_width,term_height));
 	stdscr.refresh();
-	std::thread::sleep(Duration::from_secs(2));
+	ncurses.getch();
 	//====== cleanup ======
-	//control_window.delwin();
-	//selection_window.delwin();
-	//info_window.delwin();
-	//stdscr.delwin();
-	//ncurses.end();
+	control_window.delwin();
+	selection_window.delwin();
+	info_window.delwin();
+	stdscr.delwin();
+	ncurses.end();
 	ExitCode::SUCCESS
 }
 
