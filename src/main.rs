@@ -17,7 +17,7 @@ use std::os::fd::AsRawFd;
 use std::time::Duration;
 
 use password_store::{PasswordStore,PasswordStoreEntry};
-use ncurses::Ncurses;
+use ncurses::{Ncurses,Input};
 
 struct GlobalConfig {
 	password: Option<String>,
@@ -129,9 +129,16 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	control_window.refresh();
 	info_window.refresh();
 	//====== update loop ======
-	stdscr.mvaddstr(1,1,format!("{}x{}",term_width,term_height));
-	stdscr.refresh();
-	ncurses.getch();
+	loop {
+		selection_window.refresh();
+		match ncurses.getch() {
+			Input::Up => selection_window.mvaddstr(1,1,"up  "),
+			Input::Down => selection_window.mvaddstr(1,1,"down"),
+			Input::Left => selection_window.mvaddstr(1,1,"left"),
+			Input::Right => selection_window.mvaddstr(1,1,"right"),
+			_ => ()
+		}
+	}
 	//====== cleanup ======
 	control_window.delwin();
 	selection_window.delwin();
