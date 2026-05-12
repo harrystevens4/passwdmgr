@@ -1,9 +1,11 @@
 use std::ffi::*;
 use crate::constants::*;
+use std::cell::RefCell;
 
 pub type chtype = c_uint;
 pub type WindowPtr = *mut c_void;
 
+#[allow(dead_code)]
 unsafe extern "C" {
 	fn initscr() -> WindowPtr;
 	fn endwin() -> WindowPtr;
@@ -17,10 +19,15 @@ unsafe extern "C" {
 	fn mbstowcs(dest: *mut c_void, src: *const c_char, dsize: c_size_t) -> c_size_t;
 	fn getch() -> c_int;
 	fn keypad(win: WindowPtr, bf: c_int) -> c_int;
+	fn echo() -> c_int;
+	fn noecho() -> c_int;
+	fn werase(win: WindowPtr) -> c_int;
+	fn wresize(win: WindowPtr, lines: c_int, columns: c_int) -> c_int;
+	fn mvwin(win: WindowPtr, y: c_int, x: c_int) -> c_int;
 }
 
 pub struct Ncurses {
-	stdscr: WindowPtr,
+	stdscr: RefCell<Option<WindowPtr>>,
 }
 
 #[derive(Clone)]
@@ -38,6 +45,7 @@ pub enum Input {
 	Space,
 	Enter,
 	Backspace,
+	Resize,
 	Unknown,
 }
 
@@ -46,14 +54,14 @@ impl Ncurses {
 		let stdscr = unsafe {initscr()};
 		unsafe {wrefresh(stdscr)};
 		Self {
-			stdscr,
+			stdscr: RefCell::new(Some(stdscr)),
 		}
 	}
-	pub fn stdscr(&self) -> Window<'_> {
-		Window {
-			ptr: self.stdscr,
-			__ncurses: &self,
-		}
+	pub fn stdscr<'a>(&'a self) -> Option<Window<'a>> { //can only have on stdscr object ever
+		let mut stdscr_mut = self.stdscr.borrow_mut();
+		stdscr_mut
+			.take()
+			.map(|ptr| Window { ptr, __ncurses: &self })
 	}
 	pub fn end(self) {} //drop self
 	pub fn newwin(&self, lines: usize, cols: usize, begin_y: usize, begin_x: usize) -> Window<'_> {
@@ -63,6 +71,9 @@ impl Ncurses {
 			__ncurses: &self
 		}
 	}
+	pub fn noecho(&self) {unsafe {noecho()};}
+	#[allow(unused)]
+	pub fn echo(&self) {unsafe {echo()};}
 	pub fn getch(&self) -> Input {
 		use Input::*;
 		let ch = unsafe {getch()};
@@ -72,6 +83,7 @@ impl Ncurses {
 			KEY_LEFT => Left,
 			KEY_RIGHT => Right,
 			KEY_BACKSPACE => Backspace,
+			KEY_RESIZE => Resize,
 			10 => Enter,
 			code => {
 				char::from_u32(code as u32)
@@ -120,6 +132,13 @@ impl Window<'_> {
 		)};
 	}
 	pub fn keypad(&self, bf: bool) {unsafe {keypad(self.as_ptr(),bf as c_int)};}
+	pub fn erase(&self) {unsafe {werase(self.as_ptr())};}
+	pub fn resize(&self, lines: usize, columns: usize){
+		unsafe {wresize(self.as_ptr(),lines as c_int,columns as c_int)};
+	}
+	pub fn mvwin(&self, y: usize, x: usize){
+		unsafe {mvwin(self.as_ptr(),y as c_int,x as c_int)};
+	}
 }
 
 impl Drop for Window<'_> {
