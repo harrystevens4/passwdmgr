@@ -17,7 +17,7 @@ use std::os::fd::AsRawFd;
 use std::time::Duration;
 
 use password_store::{PasswordStore,PasswordStoreEntry};
-use ncurses::{Ncurses,Input};
+use ncurses::{Ncurses,Input,Window};
 
 struct GlobalConfig {
 	password: Option<String>,
@@ -99,10 +99,43 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	if args.has('t') {return ExitCode::SUCCESS}
 	//====== ncurses window ======
 	let ncurses = Ncurses::init();
-	let stdscr = ncurses.stdscr();
-	let (term_height,term_width) = stdscr.getmaxyx();
+	let Some(stdscr) = ncurses.stdscr()
+	else {
+		eprintln!("couldn't open stdscr");
+		return ExitCode::FAILURE;
+	};
 	stdscr.keypad(true);
-	//calculate window sizes and positions
+	ncurses.noecho();
+	//create windows
+	let selection_window = ncurses.newwin(1,1,0,0);
+	let control_window = ncurses.newwin(1,1,0,0);
+	let info_window = ncurses.newwin(1,1,0,0);
+	//update window sizes
+	resize_windows(&stdscr,&selection_window,&control_window,&info_window);
+	//====== update loop ======
+	loop {
+		selection_window.refresh();
+		match ncurses.getch() {
+			Input::Up => selection_window.mvaddstr(1,1,"up  "),
+			Input::Down => selection_window.mvaddstr(1,1,"down"),
+			Input::Left => selection_window.mvaddstr(1,1,"left"),
+			Input::Right => selection_window.mvaddstr(1,1,"right"),
+			Input::Resize => resize_windows(&stdscr,&selection_window,&control_window,&info_window),
+			_ => ()
+		}
+	}
+	//====== cleanup ======
+	control_window.delwin();
+	selection_window.delwin();
+	info_window.delwin();
+	stdscr.delwin();
+	ncurses.end();
+	ExitCode::SUCCESS
+}
+
+fn resize_windows(stdscr: &Window, selection_window: &Window, control_window: &Window, info_window: &Window){
+	//====== calculate window sizes and positions ======
+	let (term_height,term_width) = stdscr.getmaxyx();
 	let selection_window_width = term_width/3;
 	let selection_window_height = term_height;
 	let selection_window_x = 0;
@@ -117,35 +150,29 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	let info_window_height = term_height-control_window_height;
 	let info_window_x = selection_window_width;
 	let info_window_y = 0;
-
-	//create windows
-	let selection_window = ncurses.newwin(selection_window_height,selection_window_width,selection_window_y,selection_window_x);
-	let control_window = ncurses.newwin(control_window_height,control_window_width,control_window_y,control_window_x);
-	let info_window = ncurses.newwin(info_window_height,info_window_width,info_window_y,info_window_x);
+	//====== erase current windows ======
+	selection_window.erase();
+	control_window.erase();
+	info_window.erase();
+	stdscr.erase();
+	//====== move and resize ======
+	//resize
+	selection_window.resize(selection_window_height,selection_window_width);
+	control_window.resize(control_window_height,control_window_width);
+	info_window.resize(info_window_height,info_window_width);
+	//move
+	selection_window.mvwin(selection_window_y,selection_window_x);
+	control_window.mvwin(control_window_y,control_window_x);
+	info_window.mvwin(info_window_y,info_window_x);
+	//====== redraw borders ======
 	selection_window.r#box(0,0);
 	control_window.r#box(0,0);
 	info_window.r#box(0,0);
+	//refresh
+	stdscr.refresh();
 	selection_window.refresh();
 	control_window.refresh();
 	info_window.refresh();
-	//====== update loop ======
-	loop {
-		selection_window.refresh();
-		match ncurses.getch() {
-			Input::Up => selection_window.mvaddstr(1,1,"up  "),
-			Input::Down => selection_window.mvaddstr(1,1,"down"),
-			Input::Left => selection_window.mvaddstr(1,1,"left"),
-			Input::Right => selection_window.mvaddstr(1,1,"right"),
-			_ => ()
-		}
-	}
-	//====== cleanup ======
-	control_window.delwin();
-	selection_window.delwin();
-	info_window.delwin();
-	stdscr.delwin();
-	ncurses.end();
-	ExitCode::SUCCESS
 }
 
 fn new_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
