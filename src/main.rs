@@ -15,6 +15,7 @@ use std::fs;
 use std::ffi::*;
 use std::os::fd::AsRawFd;
 use std::time::Duration;
+use std::cmp::{min,max};
 
 use password_store::{PasswordStore,PasswordStoreEntry};
 use ncurses::{Ncurses,Input,Window};
@@ -97,7 +98,7 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	};
 	//test mode simply opens then closes it
 	if args.has('t') {return ExitCode::SUCCESS}
-	//====== ncurses window ======
+	//====== ncurses initialisation ======
 	let ncurses = Ncurses::init();
 	let Some(stdscr) = ncurses.stdscr()
 	else {
@@ -111,18 +112,37 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	let control_window = ncurses.newwin(1,1,0,0);
 	let info_window = ncurses.newwin(1,1,0,0);
 	//update window sizes
-	resize_windows(&stdscr,&selection_window,&control_window,&info_window);
+	redraw_windows(&stdscr,&selection_window,&control_window,&info_window);
+	//====== key variables ======
+	//seperate so when the user clears the filter they go back to where they were
+	let mut unfiltered_selected_password = 0_usize; 
+	let mut filtered_selected_password = 0_usize;
+	let mut filter = String::new();
 	//====== update loop ======
 	loop {
-		selection_window.refresh();
+		//====== input handling ======
 		match ncurses.getch() {
-			Input::Up => selection_window.mvaddstr(1,1,"up  "),
-			Input::Down => selection_window.mvaddstr(1,1,"down"),
+			Input::Up => if filter.len() > 0 {filtered_selected_password+=1} else {unfiltered_selected_password+=1},
+			Input::Down => if filter.len() > 0 {filtered_selected_password+=1} else {unfiltered_selected_password+=1},
 			Input::Left => selection_window.mvaddstr(1,1,"left"),
 			Input::Right => selection_window.mvaddstr(1,1,"right"),
-			Input::Resize => resize_windows(&stdscr,&selection_window,&control_window,&info_window),
+			Input::Resize => redraw_windows(&stdscr,&selection_window,&control_window,&info_window),
 			_ => ()
 		}
+		unfiltered_selected_password %= password_store.entries().len();
+		//====== render each window ======
+		let selectable_passwords = vec!["amazon.co.uk","ebay.co.uk","netflix.co.uk","gmail.com","web.whatsapp.com","outlook.com","disneyplus.com","hotmail.com","realy-long-domain-name.co.uk","nhs.gov.uk"].into_iter().map(String::from).collect::<Vec<_>>();
+		//let selectable_passwords = password_store
+		//	.entries()
+		//	.into_iter()
+		//	.map(|p| p.identifier())
+		//	.collect::<Vec<String>>();
+		render_selections(
+			&selection_window,
+			&selectable_passwords,
+			if filter.len() > 0 {filtered_selected_password} else {unfiltered_selected_password}
+		);
+		selection_window.refresh();
 	}
 	//====== cleanup ======
 	control_window.delwin();
@@ -133,7 +153,35 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	ExitCode::SUCCESS
 }
 
-fn resize_windows(stdscr: &Window, selection_window: &Window, control_window: &Window, info_window: &Window){
+fn render_selections(selection_window: &Window, selections: &[String], selection_index: usize){
+	//figure out where the cursor and all the selections should be
+	let (height,width) = selection_window.getmaxyx();
+	//dont do anything
+	if selections.len() == 0 || height < 2 {return}
+	//I cast... 1000000 isizes!!!!!
+	let cursor_index = max(
+		min(selection_index,(height-2)/2) as isize,
+		height as isize - (selections.len() as isize - selection_index as isize)
+	) as usize;
+	let selection_start_index = min(
+		max(0,(selection_index as isize) - ((height-2)/2) as isize),
+		selections.len() as isize -1
+	) as usize;
+	//actualy render the selections
+	for (i,selection) in selections[selection_start_index..].iter().enumerate() {
+		//dont render past the end of the window
+		if i >= (selection_start_index+height-2) {break}
+		//truncate to fit
+		let truncated_selection = selection
+			.chars()
+			.take(width-2)
+			.collect::<String>();
+		//add the selection
+		selection_window.mvaddstr(i+1,1,truncated_selection);
+	}
+}
+
+fn redraw_windows(stdscr: &Window, selection_window: &Window, control_window: &Window, info_window: &Window){
 	//====== calculate window sizes and positions ======
 	let (term_height,term_width) = stdscr.getmaxyx();
 	let selection_window_width = term_width/3;
