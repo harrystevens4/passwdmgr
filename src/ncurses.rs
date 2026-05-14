@@ -27,6 +27,7 @@ unsafe extern "C" {
 	fn wresize(win: WindowPtr, lines: c_int, columns: c_int) -> c_int;
 	fn mvwin(win: WindowPtr, y: c_int, x: c_int) -> c_int;
 	fn mvwchgat(window: WindowPtr, y: c_int, x: c_int, n: c_int, attr: attr_t, pair: c_short,opts: *const c_void) -> c_int;
+	fn wmove(win: WindowPtr, y: c_int, x: c_int) -> c_int;
 }
 
 pub struct Ncurses {
@@ -164,6 +165,9 @@ impl Window<'_> {
 			.into_iter()
 			.fold(0,|attrs,v| attrs | *v as isize); //bitwise or attrs together
 		unsafe {mvwchgat(self.as_ptr(),y as c_int,x as c_int,n as c_int,attrs as attr_t,pair,ptr::null())};
+	}
+	pub fn wmove(&self, y: usize, x: usize) {
+		unsafe {wmove(self.as_ptr(),y as c_int,x as c_int)};
 	}
 }
 
