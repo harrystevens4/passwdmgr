@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::cmp::{min,max};
 
 use password_store::{PasswordStore,PasswordStoreEntry};
-use ncurses::{Ncurses,Input,Window};
+use ncurses::{Ncurses,Input,Window,VideoAttribute};
 
 struct GlobalConfig {
 	password: Option<String>,
@@ -115,23 +115,13 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 	redraw_windows(&stdscr,&selection_window,&control_window,&info_window);
 	//====== key variables ======
 	//seperate so when the user clears the filter they go back to where they were
-	let mut unfiltered_selected_password = 0_usize; 
-	let mut filtered_selected_password = 0_usize;
+	let mut unfiltered_selected_password = 0_isize; 
+	let mut filtered_selected_password = 0_isize;
 	let mut filter = String::new();
 	//====== update loop ======
 	loop {
-		//====== input handling ======
-		match ncurses.getch() {
-			Input::Up => if filter.len() > 0 {filtered_selected_password+=1} else {unfiltered_selected_password+=1},
-			Input::Down => if filter.len() > 0 {filtered_selected_password+=1} else {unfiltered_selected_password+=1},
-			Input::Left => selection_window.mvaddstr(1,1,"left"),
-			Input::Right => selection_window.mvaddstr(1,1,"right"),
-			Input::Resize => redraw_windows(&stdscr,&selection_window,&control_window,&info_window),
-			_ => ()
-		}
-		unfiltered_selected_password %= password_store.entries().len();
 		//====== render each window ======
-		let selectable_passwords = vec!["amazon.co.uk","ebay.co.uk","netflix.co.uk","gmail.com","web.whatsapp.com","outlook.com","disneyplus.com","hotmail.com","realy-long-domain-name.co.uk","nhs.gov.uk"].into_iter().map(String::from).collect::<Vec<_>>();
+		let selectable_passwords = vec!["amazon.co.uk","ebay.co.uk","netflix.co.uk","gmail.com","web.whatsapp.com","outlook.com","disneyplus.com","hotmail.com","realy-long-domain-name.co.uk","nhs.gov.uk","uk.webuy.com","accounts.firefox.com","cad.onshape.com","homebase.co.uk","nowtv.com","my.integralmaths.org","computer password","phone password","totp recovery codes"].into_iter().map(String::from).collect::<Vec<_>>();
 		//let selectable_passwords = password_store
 		//	.entries()
 		//	.into_iter()
@@ -140,9 +130,21 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 		render_selections(
 			&selection_window,
 			&selectable_passwords,
-			if filter.len() > 0 {filtered_selected_password} else {unfiltered_selected_password}
+			if filter.len() > 0 {filtered_selected_password} else {unfiltered_selected_password} as usize
 		);
 		selection_window.refresh();
+		info_window.mvaddstr(1,1,format!("{unfiltered_selected_password} {filtered_selected_password}"));
+		info_window.refresh();
+		//====== input handling ======
+		match ncurses.getch() {
+			Input::Up => if filter.len() > 0 {filtered_selected_password-=1} else {unfiltered_selected_password-=1},
+			Input::Down => if filter.len() > 0 {filtered_selected_password+=1} else {unfiltered_selected_password+=1},
+			Input::Left => selection_window.mvaddstr(1,1,"left"),
+			Input::Right => selection_window.mvaddstr(1,1,"right"),
+			Input::Resize => redraw_windows(&stdscr,&selection_window,&control_window,&info_window),
+			_ => ()
+		}
+		unfiltered_selected_password = unfiltered_selected_password.rem_euclid(selectable_passwords.len() as isize);//password_store.entries().len();
 	}
 	//====== cleanup ======
 	control_window.delwin();
@@ -154,31 +156,36 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 }
 
 fn render_selections(selection_window: &Window, selections: &[String], selection_index: usize){
-	//figure out where the cursor and all the selections should be
+	//====== figure out where the cursor and all the selections should be ======
 	let (height,width) = selection_window.getmaxyx();
 	//dont do anything
 	if selections.len() == 0 || height < 2 {return}
 	//I cast... 1000000 isizes!!!!!
 	let cursor_index = max(
 		min(selection_index,(height-2)/2) as isize,
-		height as isize - (selections.len() as isize - selection_index as isize)
+		max((selection_index as isize) - max((selections.len() as isize),(height as isize - 2)) + (height as isize - 2),0
+		)
 	) as usize;
 	let selection_start_index = min(
 		max(0,(selection_index as isize) - ((height-2)/2) as isize),
-		selections.len() as isize -1
+		max((selections.len() as isize) - (height as isize - 2),0),
 	) as usize;
-	//actualy render the selections
+	//====== actualy render the selections ======
 	for (i,selection) in selections[selection_start_index..].iter().enumerate() {
 		//dont render past the end of the window
-		if i >= (selection_start_index+height-2) {break}
+		if i >= (height-2) {break}
 		//truncate to fit
 		let truncated_selection = selection
 			.chars()
 			.take(width-2)
 			.collect::<String>();
 		//add the selection
-		selection_window.mvaddstr(i+1,1,truncated_selection);
+		selection_window.mvaddstr(i+1,1,format!("{:1$}",truncated_selection,width-2,)); //pad with spaces
+		//remove any previous highlighting
+		selection_window.mvchgat(i+1,1,(width-2) as isize,&[VideoAttribute::Normal],0);
 	}
+	//====== highlight the current selection ======
+	selection_window.mvchgat(cursor_index+1,1,(width-2) as isize,&[VideoAttribute::Reverse],0);
 }
 
 fn redraw_windows(stdscr: &Window, selection_window: &Window, control_window: &Window, info_window: &Window){
