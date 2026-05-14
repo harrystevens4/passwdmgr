@@ -1,9 +1,11 @@
 use std::ffi::*;
 use crate::constants::*;
 use std::cell::RefCell;
+use std::ptr;
 
 pub type chtype = c_uint;
 pub type WindowPtr = *mut c_void;
+pub type attr_t = chtype;
 
 #[allow(dead_code)]
 unsafe extern "C" {
@@ -24,6 +26,7 @@ unsafe extern "C" {
 	fn werase(win: WindowPtr) -> c_int;
 	fn wresize(win: WindowPtr, lines: c_int, columns: c_int) -> c_int;
 	fn mvwin(win: WindowPtr, y: c_int, x: c_int) -> c_int;
+	fn mvwchgat(window: WindowPtr, y: c_int, x: c_int, n: c_int, attr: attr_t, pair: c_short,opts: *const c_void) -> c_int;
 }
 
 pub struct Ncurses {
@@ -47,6 +50,23 @@ pub enum Input {
 	Backspace,
 	Resize,
 	Unknown,
+}
+
+#[allow(unused)]
+#[derive(Copy,Clone)]
+pub enum VideoAttribute {
+	Normal = A_NORMAL as isize,
+	Standout = A_STANDOUT as isize,
+	Underline = A_UNDERLINE as isize,
+	Reverse = A_REVERSE as isize,
+	Blink = A_BLINK as isize,
+	Dim = A_DIM as isize,
+	Bold = A_BOLD as isize,
+	Protect = A_PROTECT as isize,
+	Invis = A_INVIS as isize,
+	AltCharSet = A_ALTCHARSET as isize,
+	Italic = A_ITALIC as isize,
+	Color = A_COLOR as isize,
 }
 
 impl Ncurses {
@@ -138,6 +158,12 @@ impl Window<'_> {
 	}
 	pub fn mvwin(&self, y: usize, x: usize){
 		unsafe {mvwin(self.as_ptr(),y as c_int,x as c_int)};
+	}
+	pub fn mvchgat(&self, y: usize, x: usize, n: isize, attrs: &[VideoAttribute], pair: i16){
+		let attrs = attrs
+			.into_iter()
+			.fold(0,|attrs,v| attrs | *v as isize); //bitwise or attrs together
+		unsafe {mvwchgat(self.as_ptr(),y as c_int,x as c_int,n as c_int,attrs as attr_t,pair,ptr::null())};
 	}
 }
 
