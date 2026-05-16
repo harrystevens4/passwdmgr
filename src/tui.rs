@@ -1,6 +1,23 @@
 use crate::ncurses::{Ncurses,Input,Window,VideoAttribute};
 use crate::password_store::{PasswordStore,PasswordStoreEntry};
+
+use std::ops::Drop;
 use std::cmp::{min,max};
+
+struct TuiInterface {
+	pw_selection_win: PasswordSelectionWindow,
+	controls_win: ControlsWindow,
+	pw_info_win: PasswordInfoWindow,
+}
+
+struct PasswordInfoWindow {
+}
+
+struct ControlsWindow {
+}
+
+struct PasswordSelectionWindow {
+}
 
 trait ClampCharLength {
 	fn clamp_len<'a>(&'a self, len: usize) -> &'a str;
@@ -12,7 +29,6 @@ impl ClampCharLength for str {
 		else {&self[..len]}
 	}
 }
-
 
 pub fn run_tui(password_store: &PasswordStore){
 	//====== ncurses initialisation ======
