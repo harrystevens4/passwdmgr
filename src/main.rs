@@ -171,6 +171,9 @@ fn open_subcommand(global_config: &GlobalConfig, args: &[String]) -> ExitCode {
 			Input::Resize => redraw_windows(&stdscr,&selection_window,&control_window,&info_window),
 			Input::AsciiChar(ch) => filter.push(ch),
 			Input::Backspace => {filter.pop();},
+			Input::Enter => {
+				show_selection_menu("Sort by",["identifier","time added","username"]);
+			},
 			_ => ()
 		}
 		unfiltered_selected_password = unfiltered_selected_password.rem_euclid(
@@ -235,6 +238,14 @@ fn render_selections(selection_window: &Window, selections: &[String], selection
 	}
 	//====== highlight the current selection ======
 	selection_window.mvchgat(cursor_index+1,1,(width-2) as isize,&[VideoAttribute::Reverse],0);
+}
+
+fn show_selection_menu<T: IntoIterator<Item=impl AsRef<str>>>(ncurses: &Ncurses, title: &str, options: T) -> Option<usize> {
+	let options = options
+		.into_iter()
+		.map(|x| x.as_ref().to_string())
+		.collect::<Vec<String>>();
+	None
 }
 
 fn render_control_window(control_window: &Window, selected_button: usize, filter: &str){
